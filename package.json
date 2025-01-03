@@ -1,16 +1,30 @@
 {
   "name": "@rbxts/planck",
   "version": "0.1.0-rc.1",
-  "description": "An Agnostic Scheduler for ECS",
+  "description": "An agnostic scheduler for ECS",
   "main": "out/init.lua",
   "scripts": {
     "build": "rbxtsc",
     "watch": "rbxtsc -w",
     "prepublishOnly": "pnpm run build"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yetanotherclown/planck"
+  },
+  "homepage": "https://yetanotherclown.github.io/planck",
+  "keywords": [
+    "ECS",
+    "Entity Component System",
+    "Scheduler",
+    "@rbxts",
+    "Roblox",
+    "Roblox-TS",
+    "roblox ts",
+    "roblox-ts"
+  ],
+  "author": "YetAnotherClown",
+  "license": "MIT",
   "types": "out/index.d.ts",
   "files": [
     "out",
@@ -34,5 +48,5 @@
     "prettier": "^3.4.2",
     "roblox-ts": "^3.0.0",
     "typescript": "^5.7.2"
-  }
+  },
 }
