@@ -6,7 +6,7 @@ type SystemFn<U...> = ((U...) -> any) | ((U...) -> ())
 type SystemTable<U...> = {
 	system: SystemFn<U...>,
 	phase: Phase?,
-	[any]: any,
+	[any]: any
 }
 
 type System<U...> = SystemFn<U...> | SystemTable<U...>

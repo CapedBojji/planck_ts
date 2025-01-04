@@ -47,7 +47,7 @@ local function systemReplace(scheduler, oldSystemInfo, newSystemInfo)
 end
 
 local function systemCall(scheduler, hookName, systemInfo, nextFn)
-	local hooks = scheduler._hooks[scheduler.Hooks[hookName]]
+	local hooks = scheduler._hooks[scheduler.Hooks[hookName] ]
 
 	if hooks then
 		for _, hook in hooks do
@@ -70,7 +70,7 @@ local function systemCall(scheduler, hookName, systemInfo, nextFn)
 end
 
 local function systemError(scheduler, systemInfo, err)
-	local hooks = scheduler._hooks[scheduler.Hooks["SystemError"]]
+	local hooks = scheduler._hooks[scheduler.Hooks["SystemError"] ]
 
 	if hooks then
 		for _, hook in hooks do
@@ -85,7 +85,7 @@ end
 
 type PhaseAdd = {
 	scheduler: any,
-	phase: any,
+	phase: any
 }
 
 local function phaseAdd(scheduler, phase)

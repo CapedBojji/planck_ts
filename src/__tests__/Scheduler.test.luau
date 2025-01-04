@@ -3,7 +3,7 @@ local RunService = game:GetService("RunService")
 
 local JestGlobals = require("@DevPackages/JestGlobals")
 
-local Planck = require("@Project")
+local Planck = require(script.Parent.Parent)
 
 local Phase = Planck.Phase
 local Pipeline = Planck.Pipeline

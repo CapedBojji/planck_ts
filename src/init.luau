@@ -1,30 +1,30 @@
-local Phase = require("@Project/Phase") :: any
-local Pipeline = require("@Project/Pipeline") :: any
-local Scheduler = require("@Project/Scheduler") :: any
+local Phase = require(script:WaitForChild('Phase')):: any
+local Pipeline = require(script:WaitForChild('Pipeline')):: any
+local Scheduler = require(script:WaitForChild('Scheduler')):: any
 
 type SystemFn<U...> = ((U...) -> any) | ((U...) -> ())
 
 type SystemTable<U...> = {
 	system: SystemFn<U...>,
 	phase: Phase?,
-	[any]: any,
+	[any]: any
 }
 
 type System<U...> = SystemFn<U...> | SystemTable<U...>
 
 type EventLike = RBXScriptSignal | {
-	connect: (self: EventLike, ...any) -> any,
-	[any]: any,
+	connect: (self: EventLike,...any) -> any,
+	[any]: any
 } | {
-	Connect: (self: EventLike, ...any) -> any,
-	[any]: any,
+	Connect: (self: EventLike,...any) -> any,
+	[any]: any
 } | {
-	on: (self: EventLike, ...any) -> any,
-	[any]: any,
+	on: (self: EventLike,...any) -> any,
+	[any]: any
 }
 
 type EventInstance = Instance | {
-	[any]: EventLike,
+	[any]: EventLike
 }
 
 type Phase = {
@@ -43,7 +43,7 @@ type Phase = {
 	PostUpdate: Phase,
 	Last: Phase,
 
-	new: (debugName: string?) -> Phase,
+	new: (debugName: string?) -> Phase
 }
 
 type Pipeline = {
@@ -52,12 +52,12 @@ type Pipeline = {
 
 	insert: (self: Pipeline, phase: Phase) -> Pipeline,
 	insertAfter: (self: Pipeline, phase: Phase, after: Phase) -> Pipeline,
-	new: (debugName: string?) -> Pipeline,
+	new: (debugName: string?) -> Pipeline
 }
 
 type Plugin<U...> = {
 	build: (self: Plugin<U...>, scheduler: Scheduler<U...>) -> (),
-	[any]: any,
+	[any]: any
 }
 
 type Scheduler<U...> = {
@@ -137,13 +137,13 @@ type Scheduler<U...> = {
 		after: Phase | Pipeline
 	) -> Scheduler<U...>),
 
-	new: (U...) -> Scheduler<U...>,
+	new: (U...) -> Scheduler<U...>
 }
 
 return {
 	Phase = Phase :: Phase,
 	Pipeline = Pipeline :: Pipeline,
 	Scheduler = Scheduler :: {
-		new: <U...>(U...) -> Scheduler<U...>,
-	},
+		new: <U...>(U...) -> Scheduler<U...>	
+},
 }

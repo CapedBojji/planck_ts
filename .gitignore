@@ -8,3 +8,5 @@ results/
 **/*.tgz
 **/*.tar.gz
 **/*.zip
+sourcemap.json
+.rokit/

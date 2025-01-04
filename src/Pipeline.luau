@@ -1,10 +1,10 @@
-local Phase = require("@Project/Phase")
-
+local Phase = require(script.Parent:WaitForChild('Phase'))
 --- @class Pipeline
 ---
 --- Pipelines represent a set of ordered Phases. Systems cannot be
 --- assigned to Pipelines themselves, but rather to Phases within
 --- those Pipelines.
+
 local Pipeline = {}
 Pipeline.__index = Pipeline
 

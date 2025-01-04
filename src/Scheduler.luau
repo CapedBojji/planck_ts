@@ -1,10 +1,10 @@
 local RunService = game:GetService("RunService")
 
-local Pipeline = require("@Project/Pipeline")
-local Phase = require("@Project/Phase")
+local Pipeline = require(script.Parent:WaitForChild('Pipeline'))
+local Phase = require(script.Parent:WaitForChild('Phase'))
 
-local utils = require("@Project/utils")
-local hooks = require("@Project/hooks")
+local utils = require(script.Parent:WaitForChild('utils'))
+local hooks = require(script.Parent:WaitForChild('hooks'))
 
 local getSystem = utils.getSystem
 local getSystemName = utils.getSystemName
@@ -632,10 +632,10 @@ function Scheduler:_addBuiltins()
 
 	self:setRunCondition(Pipeline.Startup, function()
 		local phases = Pipeline.Startup._phases
-		local hasRan = startupHasRan[phases[#phases]]
+		local hasRan = startupHasRan[phases[#phases] ]
 
 		if not hasRan then
-			startupHasRan[phases[#phases]] = true
+			startupHasRan[phases[#phases] ] = true
 		end
 
 		return not hasRan
