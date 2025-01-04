@@ -53,7 +53,7 @@ type PhaseBeganHookArgs<T extends unknown[]> = PhaseAddHookArgs<T>;
 type HookFunctionMap<T extends unknown[] = unknown[]> = {
     SystemAdd: SystemAddHookArgs<T>;
     SystemRemove: SystemRemoveHookArgs<T>;
-    SystemReplace: SystemRemoveHookArgs<T>;
+    SystemReplace: SystemReplaceHookArgs<T>;
     SystemError: SystemErrorHookArgs<T>;
     OuterSystemCall: SystemCallHookArgs<T>;
     InnerSystemCall: SystemCallHookArgs<T>;
