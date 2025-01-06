@@ -117,7 +117,7 @@ export interface Utils {
 }
 
 export interface Plugin {
-    build<T extends unknown[]>(schedular: Scheduler<T>): void
+    build<T extends unknown[] = unknown[]>(schedular: Scheduler<T>): void
 }
 
 declare class Scheduler<T extends unknown[]> {
