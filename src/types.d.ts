@@ -121,6 +121,8 @@ export interface Plugin {
 }
 
 declare class Scheduler<T extends unknown[]> {
+    /** @hidden */
+    _orderedPhases: Phase[]
     Hooks: Hooks["Hooks"]
     insertAfter(phase: Phase, after: Phase | Pipeline): Scheduler<T>
     insertAfter(pipeline: Pipeline, after: Phase | Pipeline): Scheduler<T>
