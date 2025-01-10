@@ -1,3 +1,6 @@
+import Phase from "./Phase";
+import Pipeline from "./Pipeline";
+import Scheduler from "./Scheduler";
 
 export type SystemInfo<T extends unknown[]> = {
     readonly system: SystemFn<T>;
@@ -83,29 +86,6 @@ export interface EventLike {
 
 export type EventInstance = Instance | EventLike;
 
-declare class Phase {
-    constructor(debugName?: string)
-    static readonly PreStartup: Phase
-    static readonly Startup: Phase
-    static readonly PostStartup: Phase
-    static readonly PreRender: Phase
-    static readonly PreAnimation: Phase
-    static readonly PreSimulation: Phase
-    static readonly PostSimulation: Phase
-    static readonly First: Phase
-    static readonly PreUpdate: Phase
-    static readonly Update: Phase
-    static readonly PostUpdate: Phase
-    static readonly Last: Phase
-}
-
-declare class Pipeline {
-    constructor(debugName?: string)
-    insert(phase: Phase) : Pipeline
-    insertAfter(phase: Phase, after: Phase): Pipeline
-    static readonly Main: Pipeline
-    static readonly Startup: Pipeline
-}
 
 export interface Utils {
     getSystem: <T extends unknown[]>(system: System<T>) => SystemFn<T> | undefined   
@@ -120,32 +100,6 @@ export interface Plugin {
     build(schedular: Scheduler<unknown[]>): void
 }
 
-declare class Scheduler<T extends unknown[]> {
-    /** @hidden */
-    _orderedPhases: Phase[]
-    Hooks: Hooks["Hooks"]
-    insertAfter(phase: Phase, after: Phase | Pipeline): Scheduler<T>
-    insertAfter(pipeline: Pipeline, after: Phase | Pipeline): Scheduler<T>
-    insert(phase: Phase): Scheduler<T>
-    insert(phase: Pipeline): Scheduler<T>
-    insert(phase: Phase, instance: EventInstance | EventLike): Scheduler<T>
-    insert(pipeline: Pipeline, instance: EventInstance | EventLike): Scheduler<T>
-    runAll(): Scheduler<T>
-    run(system: System<T>): Scheduler<T>
-    run(phase: Phase): Scheduler<T>
-    run(pipeline: Pipeline): Scheduler<T>
-    setRunCondition(system: System<T>, fn: (...args: T) => boolean): Scheduler<T>
-    setRunCondition(phase: Phase, fn: (...args: T) => boolean): Scheduler<T>
-    setRunCondition(pipeline: Pipeline, fn: (...args: T) => boolean): Scheduler<T>
-    removeSystem(system: System<T>): Scheduler<T>
-    replaceSystem(oldSystem: System<T>, newSystem: System<T>): Scheduler<T>
-    editSystem(system: System<T>, phase: Phase): Scheduler<T>
-    addSystem(system: System<T>, phase?: Phase): Scheduler<T>
-    addPlugin(plugin: Plugin): Scheduler<T>
-    /** @hidden */
-    _addHook<K extends keyof HookFunctionMap>(hook: K, fn: (info: HookFunctionArgs<K, T>) => void): void
-    constructor(...args: T)
-}
 
 
 
