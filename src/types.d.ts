@@ -82,9 +82,9 @@ export interface EventLike {
     Connect(callback: (...args: unknown[]) => void): void;
     on(callback: (...args: unknown[]) => void): void;
     On(callback: (...args: unknown[]) => void): void;
-}
+} 
 
-export type EventInstance = Instance | EventLike;
+export type EventInstance = Instance | EventLike | RBXScriptSignal;
 
 
 export interface Utils {
