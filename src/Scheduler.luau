@@ -57,6 +57,23 @@ function Scheduler:_addHook(hook, fn)
 	table.insert(self._hooks[hook], fn)
 end
 
+--- @method getDeltaTime
+--- @within Scheduler
+--- @return number
+---
+--- Returns the time since the system was ran last.
+--- This must be used within a registered system.
+function Scheduler:getDeltaTime()
+	local systemFn = debug.info(2, "f")
+	if not systemFn or not self._systemInfo[systemFn] then
+		error(
+			"Scheduler:getDeltaTime() must be used within a registered system"
+		)
+	end
+
+	return self._systemInfo[systemFn].deltaTime or 0
+end
+
 -- Inspiration from https://github.com/matter-ecs/matter <3
 function Scheduler:_handleLogs(systemInfo)
 	if not systemInfo.timeLastLogged then
@@ -94,6 +111,10 @@ function Scheduler:runSystem(system)
 	end
 
 	local systemInfo = self._systemInfo[system]
+	local now = os.clock()
+
+	systemInfo.deltaTime = now - (systemInfo.lastTime or now)
+	systemInfo.lastTime = now
 
 	if not self._thread then
 		self._thread = coroutine.create(function()
@@ -475,7 +496,7 @@ function Scheduler:editSystem(system, newPhase)
 	local systemInfo = self._systemInfo[systemFn]
 	assert(
 		systemInfo,
-		"Attempt to edit a non-exist system in Scheduler:editSystem(_)"
+		"Attempt to remove a non-exist system in Scheduler:removeSystem(_)"
 	)
 
 	assert(
@@ -630,17 +651,6 @@ function Scheduler:_addBuiltins()
 
 	local startupHasRan = {}
 
-	self:setRunCondition(Pipeline.Startup, function()
-		local phases = Pipeline.Startup._phases
-		local hasRan = startupHasRan[phases[#phases] ]
-
-		if not hasRan then
-			startupHasRan[phases[#phases] ] = true
-		end
-
-		return not hasRan
-	end)
-
 	for _, phase in Pipeline.Startup._phases do
 		self:setRunCondition(phase, function()
 			local hasRan = startupHasRan[phase]
@@ -664,7 +674,7 @@ function Scheduler:_scheduleEvent(instance, event)
 
 	local callback = function()
 		for _, phase in self._eventToPhases[identifier] do
-			self:runPhase(phase)
+			self:run(phase)
 		end
 	end
 
