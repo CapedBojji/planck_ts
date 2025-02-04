@@ -10,6 +10,7 @@ declare class Scheduler<T extends unknown[]> {
     insertAfter(pipeline: Pipeline, after: Phase | Pipeline): Scheduler<T>
     insert(phase: Phase): Scheduler<T>
     insert(phase: Pipeline): Scheduler<T>
+    getDeltaTime(): number
     insert(phase: Phase, instance: EventInstance | EventLike): Scheduler<T>
     insert(pipeline: Pipeline, instance: EventInstance | EventLike): Scheduler<T>
     runAll(): Scheduler<T>
