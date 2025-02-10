@@ -24,7 +24,7 @@ declare class Scheduler<T extends unknown[]> {
     replaceSystem(oldSystem: System<T>, newSystem: System<T>): Scheduler<T>
     editSystem(system: System<T>, phase: Phase): Scheduler<T>
     addSystem(system: System<T>, phase?: Phase): Scheduler<T>
-    addSystems(...systems: System<T>[]): Scheduler<T>
+    addSystems(systems: System<T>[], phase?: Phase): Scheduler<T>
     addPlugin(plugin: Plugin): Scheduler<T>
     /** @hidden */
     _addHook<K extends keyof HookFunctionMap>(hook: K, fn: (info: HookFunctionArgs<K, T>) => void): void
