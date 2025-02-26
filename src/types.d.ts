@@ -77,10 +77,13 @@ export interface SystemTable<T extends unknown[]> {
 
 export type System<T extends unknown[]> = SystemFn<T> | SystemTable<T>;
 
-export interface EventLike {
+export type EventLike =  {
     connect(callback: (...args: unknown[]) => void): void;
+} | {
     Connect(callback: (...args: unknown[]) => void): void;
+} | {
     on(callback: (...args: unknown[]) => void): void;
+} | {
     On(callback: (...args: unknown[]) => void): void;
 } 
 
@@ -94,9 +97,9 @@ export interface Utils {
     getSystemName: <T extends unknown[]>(system: SystemFn<T>) => string
     isPhase: (phase: Phase) => Phase | undefined
     isPipeline: (pipeline: Pipeline) => Pipeline | undefined
-    getEventIdentifier: (instance: EventInstance, event?: EventLike) => string
-    isValidEvent: (instance: EventInstance, event: EventLike) => boolean
-    getConnectedFunction: (instance: EventInstance | EventLike, event: string | EventLike) => ConnectFn | undefined
+    getEventIdentifier: (instance: EventInstance, event?: string) => string
+    isValidEvent: (instance: EventInstance, event?: string) => boolean
+    getConnectedFunction: (instance: EventInstance, event?: string) => ConnectFn | undefined
     disconnectEvent: (disconectable: Disconnectable) => void
 }
 

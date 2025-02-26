@@ -1,6 +1,6 @@
 {
   "name": "@rbxts/planck",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "An agnostic scheduler for ECS",
   "main": "out/init.lua",
   "scripts": {

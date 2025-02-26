@@ -17,7 +17,7 @@ declare class Scheduler<T extends unknown[]> {
     insertBefore(dependent: Pipeline, before: Phase): Scheduler<T>
     insertAfter(phase: Phase, after: Phase | Pipeline): Scheduler<T>
     insertAfter(pipeline: Pipeline, after: Phase | Pipeline): Scheduler<T>
-    insert(dependent: Phase | Pipeline, instance: EventInstance | EventLike, event?: string | EventLike): Scheduler<T>
+    insert(dependent: Phase | Pipeline, instance: EventInstance, event?: string): Scheduler<T>
     insert(dependent: Phase | Pipeline): Scheduler<T>
     runAll(): Scheduler<T>
     run(dependent: System<T> | Phase | Pipeline): Scheduler<T>
