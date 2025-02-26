@@ -7,7 +7,7 @@ declare const timePassed: (time: number) => Condition;
 declare const exported: {
     timePassed: (time: number) => Condition;
     runOnce: () => Condition;
-    onEvent: <T extends unknown[]>(instance: EventInstance<T>, event?: string) => LuaTuple<[Condition, IterableFunction<T>, () => void]>;
+    onEvent: <T extends unknown[]>(instance: EventInstance<T>, event?: string) => LuaTuple<[Condition, () => IterableFunction<T>, () => void]>;
     isNot: (condition: Condition) => Condition;
     cleanupCondition: (condition: Condition) => void
 }
