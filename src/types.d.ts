@@ -77,17 +77,17 @@ export interface SystemTable<T extends unknown[]> {
 
 export type System<T extends unknown[]> = SystemFn<T> | SystemTable<T>;
 
-export type EventLike =  {
-    connect(callback: (...args: unknown[]) => void): void;
+export type EventLike<T extends unknown[] = unknown[]> =  {
+    connect(callback: (...args: T) => void): void;
 } | {
-    Connect(callback: (...args: unknown[]) => void): void;
+    Connect(callback: (...args: T) => void): void;
 } | {
-    on(callback: (...args: unknown[]) => void): void;
+    on(callback: (...args: T) => void): void;
 } | {
-    On(callback: (...args: unknown[]) => void): void;
+    On(callback: (...args: T) => void): void;
 } 
 
-export type EventInstance = Instance | EventLike | RBXScriptSignal;
+export type EventInstance<T extends unknown[] = unknown[]> = Instance | EventLike<T> | RBXScriptSignal;
 export type Disconnectable = RBXScriptConnection | { Disconnect(): void } | { disconnect(): void } | { Destroy(): void } | { destroy(): void; }
 export type ConnectFn = (callback: (...args: unknown[]) => void) => Disconnectable;
 
@@ -97,9 +97,9 @@ export interface Utils {
     getSystemName: <T extends unknown[]>(system: SystemFn<T>) => string
     isPhase: (phase: Phase) => Phase | undefined
     isPipeline: (pipeline: Pipeline) => Pipeline | undefined
-    getEventIdentifier: (instance: EventInstance, event?: string) => string
-    isValidEvent: (instance: EventInstance, event?: string) => boolean
-    getConnectedFunction: (instance: EventInstance, event?: string) => ConnectFn | undefined
+    getEventIdentifier: <T extends unknown[]>(instance: EventInstance<T>, event?: string) => string
+    isValidEvent: <T extends unknown[]>(instance: EventInstance<T>, event?: string) => boolean
+    getConnectedFunction: <T extends unknown[]>(instance: EventInstance<T>, event?: string) => ConnectFn | undefined
     disconnectEvent: (disconectable: Disconnectable) => void
 }
 
