@@ -85,6 +85,8 @@ export interface EventLike {
 } 
 
 export type EventInstance = Instance | EventLike | RBXScriptSignal;
+export type Disconnectable = RBXScriptConnection | { Disconnect(): void } | { disconnect(): void } | { Destroy(): void } | { destroy(): void; }
+export type ConnectFn = (callback: (...args: unknown[]) => void) => Disconnectable;
 
 
 export interface Utils {
@@ -93,7 +95,9 @@ export interface Utils {
     isPhase: (phase: Phase) => Phase | undefined
     isPipeline: (pipeline: Pipeline) => Pipeline | undefined
     getEventIdentifier: (instance: EventInstance, event?: EventLike) => string
-    isValidEvent: (instance: EventInstance, event?: EventLike) => boolean
+    isValidEvent: (instance: EventInstance, event: EventLike) => boolean
+    getConnectedFunction: (instance: EventInstance | EventLike, event: string | EventLike) => ConnectFn | undefined
+    disconnectEvent: (disconectable: Disconnectable) => void
 }
 
 export interface Plugin {

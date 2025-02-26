@@ -1,10 +1,11 @@
-local RunService = game:GetService("RunService")
+--!nonstrict
+local DependencyGraph = require("./DependencyGraph")
+local Pipeline = require("./Pipeline")
+local Phase = require("./Phase")
 
-local Pipeline = require(script.Parent:WaitForChild('Pipeline'))
-local Phase = require(script.Parent:WaitForChild('Phase'))
-
-local utils = require(script.Parent:WaitForChild('utils'))
-local hooks = require(script.Parent:WaitForChild('hooks'))
+local utils = require("./utils")
+local hooks = require("./hooks")
+local conditions = require("./conditions")
 
 local getSystem = utils.getSystem
 local getSystemName = utils.getSystemName
@@ -49,6 +50,7 @@ Scheduler.Hooks = hooks.Hooks
 --- Initializes a plugin with the scheduler, see the [Plugin Docs](/docs/plugins) for more information.
 function Scheduler:addPlugin(plugin)
 	plugin:build(self)
+	table.insert(self._plugins, plugin)
 	return self
 end
 
@@ -105,8 +107,7 @@ function Scheduler:_handleLogs(systemInfo)
 end
 
 function Scheduler:runSystem(system)
-	local runIf = self._runIfConditions[system]
-	if runIf and runIf(table.unpack(self._vargs)) == false then
+	if self:_canRun(system) == false then
 		return
 	end
 
@@ -133,11 +134,14 @@ function Scheduler:runSystem(system)
 
 	local function systemCall()
 		local function noYield()
-			local success, err = coroutine.resume(self._thread, function()
-				system(table.unpack(self._vargs))
+			local success, err
+			coroutine.resume(self._thread, function()
+				success, err = xpcall(system, function(e)
+					return debug.traceback(e)
+				end, table.unpack(self._vargs))
 			end)
 
-			if not success then
+			if success == false then
 				didYield = true
 				table.insert(systemInfo.logs, err)
 				hooks.systemError(self, systemInfo, err)
@@ -146,12 +150,16 @@ function Scheduler:runSystem(system)
 
 			if self._yielded then
 				didYield = true
-				local trace, line = debug.info(systemInfo.system, "sl")
-				table.insert(systemInfo.logs, `{trace}:{line}: System yielded`)
+				local source, line = debug.info(self._thread, 1, "sl")
+				local errMessage = `{source}:{line}: System yielded`
+				table.insert(
+					systemInfo.logs,
+					debug.traceback(self._thread, errMessage, 2)
+				)
 				hooks.systemError(
 					self,
 					systemInfo,
-					`{trace}:{line}: System yielded`
+					debug.traceback(self._thread, errMessage, 2)
 				)
 			end
 		end
@@ -205,12 +213,15 @@ function Scheduler:runSystem(system)
 end
 
 function Scheduler:runPhase(phase)
-	local runIf = self._runIfConditions[phase]
-	if runIf and runIf(table.unpack(self._vargs)) == false then
+	if self:_canRun(phase) == false then
 		return
 	end
 
 	hooks.phaseBegan(self, phase)
+
+	if not self._phaseToSystems[phase] then
+		self._phaseToSystems[phase] = {}
+	end
 
 	for _, system in self._phaseToSystems[phase] do
 		self:runSystem(system)
@@ -218,14 +229,33 @@ function Scheduler:runPhase(phase)
 end
 
 function Scheduler:runPipeline(pipeline)
-	local runIf = self._runIfConditions[pipeline]
-	if runIf and runIf(table.unpack(self._vargs)) == false then
+	if self:_canRun(pipeline) == false then
 		return
 	end
 
-	for _, phase in pipeline._phases do
+	local orderedList = pipeline.dependencyGraph:getOrderedList()
+	assert(
+		orderedList,
+		`Pipeline {pipeline} contains a circular dependency, check it's Phases`
+	)
+
+	for _, phase in orderedList do
 		self:runPhase(phase)
 	end
+end
+
+function Scheduler:_canRun(dependent)
+	local conditions = self._runIfConditions[dependent]
+
+	if conditions then
+		for _, runIf in conditions do
+			if runIf(table.unpack(self._vargs)) == false then
+				return false
+			end
+		end
+	end
+
+	return true
 end
 
 --- @method run
@@ -274,37 +304,42 @@ end
 --- @return Scheduler
 ---
 --- Runs all Systems within order.
+---
+--- :::note
+--- When you add a Pipeline or Phase with an event, it will be grouped
+--- with other Pipelines/Phases on that event. Otherwise, it will be
+--- added to the default group.
+---
+--- When not running systems on Events, such as with the `runAll` method,
+--- the Default group will be ran first, and then each Event Group in the
+--- order created.
+---
+--- Pipelines/Phases in these groups are still ordered by their dependencies
+--- and by the order of insertion.
+--- :::
 function Scheduler:runAll()
-	for _, phase in self._orderedPhases do
-		self:run(phase)
-	end
-end
-
-function Scheduler:_insertPhaseAt(phase, index, instance, event)
+	local orderedDefaults = self._defaultDependencyGraph:getOrderedList()
 	assert(
-		not table.find(self._orderedPhases, phase),
-		"Phase already initialized"
+		orderedDefaults,
+		"Default Group contains a circular dependency, check your Pipelines/Phases"
 	)
 
-	table.insert(self._orderedPhases, index, phase)
-	self._phaseToSystems[phase] = {}
-
-	hooks.phaseAdd(self, phase)
-
-	if isValidEvent(instance, event) then
-		self:_schedulePhase(phase, instance, event)
+	for _, dependency in orderedDefaults do
+		self:run(dependency)
 	end
-end
 
-function Scheduler:insertPhase(phase, instance, event)
-	local index = table.find(self._orderedPhases, Phase.Update)
-	self:_insertPhaseAt(phase, index, instance, event)
-end
-
-function Scheduler:insertPipeline(pipeline, instance, event)
-	for _, phase in pipeline._phases do
-		self:insertPhase(phase, instance, event)
+	for identifier, dependencyGraph in self._eventDependencyGraphs do
+		local orderedList = dependencyGraph:getOrderedList()
+		assert(
+			orderedDefaults,
+			`Event Group '{identifier}' contains a circular dependency, check your Pipelines/Phases`
+		)
+		for _, dependency in orderedList do
+			self:run(dependency)
+		end
 	end
+
+	return self
 end
 
 --- @method insert
@@ -312,15 +347,17 @@ end
 --- @param phase Phase
 --- @return Scheduler
 ---
---- Initializes the Phase within the Scheduler, ordering it implicitly.
+--- Initializes the Phase within the Scheduler, ordering it implicitly by
+--- setting it as a dependent of the previous Phase/Pipeline.
 
 --- @method insert
 --- @within Scheduler
 --- @param pipeline Pipeline
 --- @return Scheduler
 ---
---- Initializes all Phases within the Pipeline within the Scheduler,
---- ordering the Pipeline implicitly.
+--- Initializes the Pipeline and it's Phases within the Scheduler,
+--- ordering the Pipeline implicitly by setting it as a dependent
+--- of the previous Phase/Pipeline.
 
 --- @method insert
 --- @within Scheduler
@@ -330,7 +367,8 @@ end
 --- @return Scheduler
 ---
 --- Initializes the Phase within the Scheduler, ordering it implicitly
---- and scheduling it to be ran on the specified event.
+--- by setting it as a dependent of the previous Phase/Pipeline, and
+--- scheduling it to be ran on the specified event.
 ---
 --- ```lua
 --- local myScheduler = Scheduler.new()
@@ -344,22 +382,38 @@ end
 --- @param event string | EventLike
 --- @return Scheduler
 ---
---- Initializes all Phases within the Pipeline within the Scheduler,
---- ordering the Pipeline implicitly and scheduling it to be ran on
---- the specified event.
+--- Initializes the Pipeline and it's Phases within the Scheduler,
+--- ordering the Pipeline implicitly by setting it as a dependent of
+--- the previous Phase/Pipeline, and scheduling it to be ran on the
+--- specified event.
 ---
 --- ```lua
 --- local myScheduler = Scheduler.new()
 ---     :insert(myPipeline, RunService, "Heartbeat")
 --- ```
 
-function Scheduler:insert(dependent, instance, event)
-	if isPhase(dependent) then
-		self:insertPhase(dependent, instance, event)
-	elseif isPipeline(dependent) then
-		self:insertPipeline(dependent, instance, event)
+function Scheduler:insert(dependency, instance, event)
+	assert(
+		isPhase(dependency) or isPipeline(dependency),
+		"Unknown dependency passed to Scheduler:insert(unknown, _, _)"
+	)
+
+	if not instance then
+		local dependencyGraph = self._defaultDependencyGraph
+		dependencyGraph:insertBefore(dependency, self._defaultPhase)
 	else
-		error("Unknown dependent passed to Scheduler:insert(unknown, _, _)")
+		assert(
+			isValidEvent(instance, event),
+			"Unknown instance/event passed to Scheduler:insert(_, instance, event)"
+		)
+
+		local dependencyGraph = self:_getEventDependencyGraph(instance, event)
+		dependencyGraph:insert(dependency)
+	end
+
+	if isPhase(dependency) then
+		self._phaseToSystems[dependency] = {}
+		hooks.phaseAdd(self, dependency)
 	end
 
 	return self
@@ -372,8 +426,7 @@ end
 --- @return Scheduler
 ---
 --- Initializes the Phase within the Scheduler, ordering it
---- explicitly after the Phase, or adding to the end of the
---- Pipeline provided.
+--- explicitly by setting the after Phase/Pipeline as a dependent.
 
 --- @method insertAfter
 --- @within Scheduler
@@ -381,40 +434,66 @@ end
 --- @param after Phase | Pipeline
 --- @return Scheduler
 ---
---- Initializes all Phases within the Pipeline within the Scheduler,
---- ordering the Pipeline explicitly after the Phase, or adding
---- to the end of the Pipeline provided.
+--- Initializes the Pipeline and it's Phases within the Scheduler,
+--- ordering the Pipeline explicitly by setting the after Phase/Pipeline
+--- as a dependent.
 
 function Scheduler:insertAfter(dependent, after)
-	if isPhase(after) then
-		local index = table.find(self._orderedPhases, after)
-		assert(
-			index,
-			"Phase never initialized in Scheduler:insertAfter(_, phase)"
-		)
+	assert(
+		isPhase(after) or isPipeline(after),
+		"Unknown dependency passed in Scheduler:insertAfter(_, unknown)"
+	)
+	assert(
+		isPhase(dependent) or isPipeline(dependent),
+		"Unknown dependent passed in Scheduler:insertAfter(unknown, _)"
+	)
 
-		if isPhase(dependent) then
-			self:_insertPhaseAt(dependent, index + 1)
-		elseif isPipeline(dependent) then
-			for _, phase in dependent._phases do
-				index += 1
-				self:_insertPhaseAt(phase, index)
-			end
-		else
-			error(
-				"Unknown dependent passed in Scheduler:insertAfter(unknown, _)"
-			)
-		end
-	elseif isPipeline(after) then
-		local before = after._phases[#after._phases]
+	local dependencyGraph = self:_getGraphOfDependency(after)
+	dependencyGraph:insertAfter(dependent, after)
 
-		if isPhase(dependent) then
-			after:insert(dependent)
-		end
+	if isPhase(dependent) then
+		self._phaseToSystems[dependent] = {}
+		hooks.phaseAdd(self, dependent)
+	end
 
-		self:insertAfter(dependent, before)
-	else
-		error("Unknown dependency passed in Scheduler:insertAfter(_, unknown)")
+	return self
+end
+
+--- @method insertBefore
+--- @within Scheduler
+--- @param phase Phase
+--- @param before Phase | Pipeline
+--- @return Scheduler
+---
+--- Initializes the Phase within the Scheduler, ordering it
+--- explicitly by setting the before Phase/Pipeline as a dependency.
+
+--- @method insertBefore
+--- @within Scheduler
+--- @param pipeline Pipeline
+--- @param before Phase | Pipeline
+--- @return Scheduler
+---
+--- Initializes the Pipeline and it's Phases within the Scheduler,
+--- ordering the Pipeline explicitly by setting the before Phase/Pipeline
+--- as a dependency.
+
+function Scheduler:insertBefore(dependent, before)
+	assert(
+		isPhase(before) or isPipeline(before),
+		"Unknown dependency passed in Scheduler:insertBefore(_, unknown)"
+	)
+	assert(
+		isPhase(dependent) or isPipeline(dependent),
+		"Unknown dependent passed in Scheduler:insertBefore(unknown, _)"
+	)
+
+	local dependencyGraph = self:_getGraphOfDependency(before)
+	dependencyGraph:insertBefore(dependent, before)
+
+	if isPhase(dependent) then
+		self._phaseToSystems[dependent] = {}
+		hooks.phaseAdd(self, dependent)
 	end
 
 	return self
@@ -434,10 +513,15 @@ function Scheduler:addSystem(system, phase)
 		error("Unknown system passed to Scheduler:addSystem(unknown, phase?)")
 	end
 
+	local name = getSystemName(systemFn)
+	if type(system) == "table" and system.name then
+		name = system.name
+	end
+
 	local systemInfo = {
 		system = systemFn,
 		phase = phase,
-		name = getSystemName(systemFn),
+		name = name,
 		logs = {},
 	}
 
@@ -445,14 +529,25 @@ function Scheduler:addSystem(system, phase)
 		if type(system) == "table" and system.phase then
 			systemInfo.phase = system.phase
 		else
-			systemInfo.phase = Phase.Update
+			systemInfo.phase = self._defaultPhase
 		end
 	end
 
 	self._systemInfo[systemFn] = systemInfo
+
+	if not self._phaseToSystems[systemInfo.phase] then
+		self._phaseToSystems[systemInfo.phase] = {}
+	end
+
 	table.insert(self._phaseToSystems[systemInfo.phase], systemFn)
 
 	hooks.systemAdd(self, systemInfo)
+
+	if type(system) == "table" and system.runConditions then
+		for _, condition in system.runConditions do
+			self:addRunCondition(systemFn, condition)
+		end
+	end
 
 	return self
 end
@@ -470,12 +565,18 @@ function Scheduler:addSystems(systems, phase)
 	end
 
 	local foundSystem = false
+	local n = 0
 
 	for _, system in systems do
+		n += 1
 		if getSystem(system) then
 			foundSystem = true
 			self:addSystem(system, phase)
 		end
+	end
+
+	if n == 0 then
+		error("Empty table passed to Scheduler:addSystems({ }, phase?)")
 	end
 
 	if not foundSystem then
@@ -483,6 +584,8 @@ function Scheduler:addSystems(systems, phase)
 			"Unknown table passed to Scheduler:addSystems({ unknown }, phase?)"
 		)
 	end
+
+	return self
 end
 
 --- @method editSystem
@@ -510,10 +613,26 @@ function Scheduler:editSystem(system, newPhase)
 	assert(index, "Unable to find system within phase")
 
 	table.remove(systems, index)
+
+	if not self._phaseToSystems[newPhase] then
+		self._phaseToSystems[newPhase] = {}
+	end
 	table.insert(self._phaseToSystems[newPhase], systemFn)
 
 	systemInfo.phase = newPhase
 	return self
+end
+
+function Scheduler:_removeCondition(dependent, condition)
+	self._runIfConditions[dependent] = nil
+
+	for _, _conditions in self._runIfConditions do
+		if table.find(_conditions, condition) then
+			return
+		end
+	end
+
+	conditions.cleanupCondition(condition)
 end
 
 --- @method removeSystem
@@ -536,6 +655,14 @@ function Scheduler:removeSystem(system)
 
 	table.remove(systems, index)
 	self._systemInfo[systemFn] = nil
+
+	if self._runIfConditions[system] then
+		for _, condition in self._runIfConditions[system] do
+			self:_removeCondition(system, condition)
+		end
+
+		self._runIfConditions[system] = nil
+	end
 
 	hooks.systemRemove(self, systemInfo)
 
@@ -583,7 +710,7 @@ function Scheduler:replaceSystem(old, new)
 	return self
 end
 
---- @method setRunCondition
+--- @method addRunCondition
 --- @within Scheduler
 --- @param system System
 --- @param fn (U...) -> boolean
@@ -591,25 +718,23 @@ end
 --- Adds a Run Condition which the Scheduler will check before
 --- this System is ran.
 
---- @method setRunCondition
+--- @method addRunCondition
 --- @within Scheduler
 --- @param phase Phase
 --- @param fn (U...) -> boolean
 ---
 --- Adds a Run Condition which the Scheduler will check before
---- any Systems tagged with this Phase are ran.
+--- any Systems within this Phase are ran.
 
---- @method setRunCondition
+--- @method addRunCondition
 --- @within Scheduler
 --- @param pipeline Pipeline
 --- @param fn (U...) -> boolean
 ---
 --- Adds a Run Condition which the Scheduler will check before
 --- any Systems within any Phases apart of this Pipeline are ran.\
---- \
---- This Run Condition will be applied to the Phases themselves.
 
-function Scheduler:setRunCondition(dependent, fn)
+function Scheduler:addRunCondition(dependent, fn)
 	local system = getSystem(dependent)
 	if system then
 		dependent = system
@@ -617,111 +742,128 @@ function Scheduler:setRunCondition(dependent, fn)
 
 	assert(
 		system or isPhase(dependent) or isPipeline(dependent),
-		"Attempt to pass unknown dependent into Scheduler:setRunCondition(unknown, _)"
+		"Attempt to pass unknown dependent into Scheduler:addRunCondition(unknown, _)"
 	)
 
-	self._runIfConditions[dependent] = fn
+	if not self._runIfConditions[dependent] then
+		self._runIfConditions[dependent] = {}
+	end
+
+	table.insert(self._runIfConditions[dependent], fn)
+
 	return self
 end
 
 function Scheduler:_addBuiltins()
-	local i = 0
+	self._defaultPhase = Phase.new("Default")
+	self._defaultDependencyGraph = DependencyGraph.new()
 
-	for _, phase in Pipeline.Startup._phases do
-		i += 1
-		self:_insertPhaseAt(phase, i)
-	end
+	self._defaultDependencyGraph:insert(Pipeline.Startup)
+	self._defaultDependencyGraph:insert(self._defaultPhase)
 
-	for _, phase in Pipeline.Main._phases do
-		i += 1
-		self:_insertPhaseAt(phase, i, RunService, "Heartbeat")
-	end
-
-	local runServiceEvents = {
-		"PreRender",
-		"PreAnimation",
-		"PreSimulation",
-		"PostSimulation",
-	}
-
-	for _, event in runServiceEvents do
-		i += 1
-		self:_insertPhaseAt(Phase[event], i, RunService, event)
-	end
-
-	local startupHasRan = {}
-
-	for _, phase in Pipeline.Startup._phases do
-		self:setRunCondition(phase, function()
-			local hasRan = startupHasRan[phase]
-
-			if not hasRan then
-				startupHasRan[phase] = true
-			end
-
-			return not hasRan
-		end)
+	self:addRunCondition(Pipeline.Startup, conditions.runOnce())
+	for _, phase in Pipeline.Startup.dependencyGraph.nodes do
+		self:addRunCondition(phase, conditions.runOnce())
 	end
 end
 
-local EVENT_CONNECT_METHODS = { "Connect", "On", "on", "connect" }
-
--- This is a modified function from Matter by evaera (https://github.com/evaera)
--- License: Copyright (c) 2021 Eryn L. K., MIT License
--- Source: https://github.com/matter-ecs/matter/blob/main/lib/hooks/useEvent.luau
 function Scheduler:_scheduleEvent(instance, event)
-	local identifier = getEventIdentifier(instance, event)
-
-	local callback = function()
-		for _, phase in self._eventToPhases[identifier] do
-			self:run(phase)
-		end
-	end
-
-	local eventInstance = instance
-
-	if typeof(event) == "RBXScriptSignal" or type(event) == "table" then
-		eventInstance = event
-	elseif type(event) == "string" then
-		eventInstance = instance[event]
-	end
-
-	if type(eventInstance) == "function" then
-		self._connectedEvents[identifier] = eventInstance
-
-		return eventInstance(eventInstance, callback)
-	elseif typeof(eventInstance) == "RBXScriptSignal" then
-		self._connectedEvents[identifier] = eventInstance
-
-		return eventInstance:Connect(callback)
-	end
-
-	if type(eventInstance) == "table" then
-		for _, method in EVENT_CONNECT_METHODS do
-			if type(eventInstance[method]) ~= "function" then
-				continue
-			end
-
-			self._connectedEvents[identifier] = eventInstance
-			return eventInstance[method](eventInstance, callback)
-		end
-	end
-
-	error(
+	local connect = utils.getConnectFunction(instance, event)
+	assert(
+		connect,
 		"Couldn't connect to event as no valid connect methods were found! Ensure the passed event has a 'Connect' or an 'on' method!"
 	)
-end
 
-function Scheduler:_schedulePhase(phase, instance, event)
 	local identifier = getEventIdentifier(instance, event)
 
-	if not self._eventToPhases[identifier] then
-		self._eventToPhases[identifier] = {}
+	local dependencyGraph = DependencyGraph.new()
+
+	local callback = function()
+		local orderedList = dependencyGraph:getOrderedList()
+
+		if orderedList == nil then
+			local err =
+				`Event Group '{identifier}' contains a circular dependency, check your Pipelines/Phases`
+			if not recentLogs[err] then
+				task.spawn(error, err, 0)
+				warn(
+					`Planck: Error occurred while running event, this error will be ignored for 10 seconds`
+				)
+				recentLogs[err] = true
+			end
+		end
+
+		for _, dependency in orderedList do
+			self:run(dependency)
+		end
 	end
 
-	table.insert(self._eventToPhases[identifier], phase)
+	self._connectedEvents[identifier] = connect(callback)
+	self._eventDependencyGraphs[identifier] = dependencyGraph
+end
+
+function Scheduler:_getEventDependencyGraph(instance, event)
+	local identifier = getEventIdentifier(instance, event)
+
 	if not self._connectedEvents[identifier] then
 		self:_scheduleEvent(instance, event)
+	end
+
+	return self._eventDependencyGraphs[identifier]
+end
+
+function Scheduler:_getGraphOfDependency(dependency)
+	if table.find(self._defaultDependencyGraph.nodes, dependency) then
+		return self._defaultDependencyGraph
+	end
+
+	for _, dependencyGraph in self._eventDependencyGraphs do
+		if table.find(dependencyGraph.nodes, dependency) then
+			return dependencyGraph
+		end
+	end
+
+	error("Dependency does not belong to a DependencyGraph")
+end
+
+--- @within Scheduler
+---
+--- Disconnects all events, closes all threads, and performs
+--- other cleanup work.
+---
+--- :::danger
+--- Only use this if you intend to not use the associated
+--- Scheduler anymore. It will not work as intended.
+---
+--- You should dereference the scheduler object so that
+--- it may be garbage collected.
+--- :::
+---
+--- :::warning
+--- If you're creating a "throwaway" scheduler, you should
+--- not add plugins like Jabby or the Matter Debugger to it.
+--- These plugins are unable to properly be cleaned up, use
+--- them with caution.
+--- :::
+function Scheduler:cleanup()
+	for _, connection in self._connectedEvents do
+		utils.disconnectEvent(connection)
+	end
+
+	for _, plugin in self._plugins do
+		if plugin.cleanup then
+			plugin:cleanup()
+		end
+	end
+
+	if self._thread then
+		coroutine.close(self._thread)
+	end
+
+	for _, _conditions in self._runIfConditions do
+		for _, condition in _conditions do
+			conditions.cleanupCondition(condition)
+		end
 	end
 end
 
@@ -738,16 +880,15 @@ function Scheduler.new(...)
 
 	self._vargs = { ... }
 
-	self._orderedPhases = {}
-	self._orderedPipelines = {}
-
-	self._eventToPhases = {}
+	self._eventDependencyGraphs = {}
 	self._connectedEvents = {}
 
 	self._phaseToSystems = {}
 	self._systemInfo = {}
 
 	self._runIfConditions = {}
+
+	self._plugins = {}
 
 	setmetatable(self, Scheduler)
 

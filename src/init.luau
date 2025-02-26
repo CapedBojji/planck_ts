@@ -1,66 +1,48 @@
-local Phase = require(script:WaitForChild('Phase')):: any
-local Pipeline = require(script:WaitForChild('Pipeline')):: any
-local Scheduler = require(script:WaitForChild('Scheduler')):: any
+local Phase = require(script:FindFirstChild("Phase")) :: any
+local Pipeline = require(script:FindFirstChild("Pipeline")) :: any
+local Scheduler = require(script:FindFirstChild("Scheduler")) :: any
 
-type SystemFn<U...> = ((U...) -> any) | ((U...) -> ())
+local conditions = require(script:FindFirstChild("conditions"))
+local utils = require(script:FindFirstChild("utils"))
 
-type SystemTable<U...> = {
+type EventLike = utils.EventLike
+type EventInstance = utils.EventInstance
+
+export type SystemFn<U...> = ((U...) -> any) | ((U...) -> ())
+
+export type SystemTable<U...> = {
 	system: SystemFn<U...>,
 	phase: Phase?,
-	[any]: any
+	name: string?,
+	runConditions: { (U...) -> boolean }?,
+	[any]: any,
 }
 
-type System<U...> = SystemFn<U...> | SystemTable<U...>
+export type System<U...> = SystemFn<U...> | SystemTable<U...>
 
-type EventLike = RBXScriptSignal | {
-	connect: (self: EventLike,...any) -> any,
-	[any]: any
-} | {
-	Connect: (self: EventLike,...any) -> any,
-	[any]: any
-} | {
-	on: (self: EventLike,...any) -> any,
-	[any]: any
-}
-
-type EventInstance = Instance | {
-	[any]: EventLike
-}
-
-type Phase = {
+export type Phase = {
 	PreStartup: Phase,
 	Startup: Phase,
 	PostStartup: Phase,
 
-	PreRender: Phase,
-	PreAnimation: Phase,
-	PreSimulation: Phase,
-	PostSimulation: Phase,
-
-	First: Phase,
-	PreUpdate: Phase,
-	Update: Phase,
-	PostUpdate: Phase,
-	Last: Phase,
-
-	new: (debugName: string?) -> Phase
+	new: (debugName: string?) -> Phase,
 }
 
-type Pipeline = {
-	Main: Pipeline,
+export type Pipeline = {
 	Startup: Pipeline,
 
 	insert: (self: Pipeline, phase: Phase) -> Pipeline,
 	insertAfter: (self: Pipeline, phase: Phase, after: Phase) -> Pipeline,
-	new: (debugName: string?) -> Pipeline
+	new: (debugName: string?) -> Pipeline,
 }
 
 type Plugin<U...> = {
 	build: (self: Plugin<U...>, scheduler: Scheduler<U...>) -> (),
-	[any]: any
+	cleanup: ((self: Plugin<U...>) -> ())?,
+	[any]: any,
 }
 
-type Scheduler<U...> = {
+export type Scheduler<U...> = {
 	addPlugin: (self: Scheduler<U...>, plugin: Plugin<U...>) -> Scheduler<U...>,
 
 	addSystem: (
@@ -92,18 +74,21 @@ type Scheduler<U...> = {
 		system: System<U...>
 	) -> Scheduler<U...>,
 
-	setRunCondition: ((
+	addRunCondition: ((
 		self: Scheduler<U...>,
 		system: System<U...>,
-		fn: (U...) -> boolean
+		fn: (U...) -> boolean,
+		...any
 	) -> Scheduler<U...>) & ((
 		self: Scheduler<U...>,
 		phase: Phase,
-		fn: (U...) -> boolean
+		fn: (U...) -> boolean,
+		...any
 	) -> Scheduler<U...>) & ((
 		self: Scheduler<U...>,
 		pipeline: Pipeline,
-		fn: (U...) -> boolean
+		fn: (U...) -> boolean,
+		...any
 	) -> Scheduler<U...>),
 
 	run: ((self: Scheduler<U...>, system: System<U...>) -> Scheduler<U...>)
@@ -111,6 +96,8 @@ type Scheduler<U...> = {
 		& ((self: Scheduler<U...>, pipeline: Pipeline) -> Scheduler<U...>),
 
 	runAll: (self: Scheduler<U...>) -> Scheduler<U...>,
+
+	getDeltaTime: (self: Scheduler<U...>) -> number,
 
 	insert: ((self: Scheduler<U...>, phase: Phase) -> Scheduler<U...>) & ((
 		self: Scheduler<U...>,
@@ -137,13 +124,20 @@ type Scheduler<U...> = {
 		after: Phase | Pipeline
 	) -> Scheduler<U...>),
 
-	new: (U...) -> Scheduler<U...>
+	cleanup: (self: Scheduler<U...>) -> (),
+
+	new: (U...) -> Scheduler<U...>,
 }
 
 return {
 	Phase = Phase :: Phase,
 	Pipeline = Pipeline :: Pipeline,
 	Scheduler = Scheduler :: {
-		new: <U...>(U...) -> Scheduler<U...>	
-},
+		new: <U...>(U...) -> Scheduler<U...>,
+	},
+
+	isNot = conditions.isNot,
+	runOnce = conditions.runOnce,
+	timePassed = conditions.timePassed,
+	onEvent = conditions.onEvent,
 }

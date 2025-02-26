@@ -6,7 +6,7 @@ type SystemFn<U...> = ((U...) -> any) | ((U...) -> ())
 type SystemTable<U...> = {
 	system: SystemFn<U...>,
 	phase: Phase?,
-	[any]: any
+	[any]: any,
 }
 
 type System<U...> = SystemFn<U...> | SystemTable<U...>
@@ -24,7 +24,8 @@ end
 local function getSystemName(system: any): string
 	local name = debug.info(system, "n")
 	if not name or string.len(name) == 0 then
-		name = debug.info(system, "sl")
+		local source, line = debug.info(system, "sl")
+		name = `{source}:{line}`
 	end
 
 	return name
@@ -50,27 +51,102 @@ local function getEventIdentifier(instance, event)
 	return `{instance}{event and `@{event}` or ""}`
 end
 
-local validEventMethods = {
-	"Connect",
-	"connect",
-	"On",
-	"on",
+local EVENT_CONNECT_METHODS = { "Connect", "On", "on", "connect" }
+
+export type EventLike = RBXScriptSignal | {
+	connect: (self: EventLike, ...any) -> any,
+	[any]: any,
+} | {
+	Connect: (self: EventLike, ...any) -> any,
+	[any]: any,
+} | {
+	on: (self: EventLike, ...any) -> any,
+	[any]: any,
 }
 
-local function isValidEvent(instance, event)
-	local eventInstance = event and instance[event] or instance
+export type EventInstance = Instance | {
+	[any]: EventLike,
+}
 
-	if typeof(eventInstance) == "RBXScriptSignal" then
-		return true
-	elseif typeof(eventInstance) == "table" then
-		for _, method in validEventMethods do
-			if eventInstance[method] ~= nil then
-				return true
+export type ConnectionLike = RBXScriptConnection | {
+	disconnect: (self: ConnectionLike, ...any) -> any,
+	[any]: any,
+} | {
+	Disconnect: (self: ConnectionLike, ...any) -> any,
+	[any]: any,
+} | {
+	destroy: (self: ConnectionLike, ...any) -> any,
+	[any]: any,
+} | {
+	Destroy: (self: ConnectionLike, ...any) -> any,
+	[any]: any,
+} | (...any) -> any
+
+export type ConnectFn<U...> = (callback: (U...) -> ()) -> ConnectionLike
+
+local EVENT_DISCONNECT_METHODS =
+	{ "disconnect", "Disconnect", "destroy", "Destroy" }
+
+local function disconnectEvent(connection: ConnectionLike)
+	if type(connection) == "function" then
+		connection()
+		return
+	elseif typeof(connection) == "RBXScriptConnection" then
+		connection:Disconnect()
+		return
+	elseif type(connection) == "table" then
+		for _, method in EVENT_DISCONNECT_METHODS do
+			if
+				connection[method]
+				and type(connection[method]) == "function"
+			then
+				connection[method](connection)
+				return
+			end
+		end
+	end
+end
+
+-- This function is inspired by useEvent in Matter, a library by evaera (https://github.com/evaera)
+-- License: Copyright (c) 2021 Eryn L. K., MIT License
+-- Source: https://github.com/matter-ecs/matter/blob/main/lib/hooks/useEvent.luau
+local function getConnectFunction<U...>(
+	instance: EventInstance | EventLike,
+	event: string | EventLike
+): ConnectFn<U...>?
+	local eventInstance = instance
+
+	if typeof(event) == "RBXScriptSignal" or type(event) == "table" then
+		eventInstance = event
+	elseif type(event) == "string" then
+		eventInstance = (instance :: any)[event]
+	end
+
+	if type(eventInstance) == "function" then
+		return eventInstance
+	elseif typeof(eventInstance) == "RBXScriptSignal" then
+		return function(callback)
+			return eventInstance:Connect(callback)
+		end
+	end
+
+	if type(eventInstance) == "table" then
+		for _, method in EVENT_CONNECT_METHODS do
+			if type(eventInstance[method]) ~= "function" then
+				continue
+			end
+
+			return function(callback)
+				return eventInstance[method](eventInstance, callback)
 			end
 		end
 	end
 
-	return false
+	return nil
+end
+
+local function isValidEvent(instance, event)
+	return getConnectFunction(instance, event) ~= nil
 end
 
 return {
@@ -80,4 +156,6 @@ return {
 	isPipeline = isPipeline,
 	getEventIdentifier = getEventIdentifier,
 	isValidEvent = isValidEvent,
+	getConnectFunction = getConnectFunction,
+	disconnectEvent = disconnectEvent,
 }
